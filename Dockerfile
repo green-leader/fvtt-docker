@@ -2,9 +2,8 @@ FROM node:20-alpine
 
 RUN deluser node && \
     mkdir /opt/foundryvtt && \
-    mkdir /data && \
-    mkdir /data/foundryvtt && \
-    mkdir /opt/foundryvtt/resources/app && \
+    mkdir -p /data/foundryvtt && \
+    mkdir -p /opt/foundryvtt/resources/app && \
     adduser --disabled-password fvtt && \
     chown fvtt:fvtt /opt/foundryvtt && \
     chown fvtt:fvtt /data/foundryvtt && \
