@@ -1,7 +1,7 @@
 version: '3'
 services:
   foundryvtt:
-    image: ghcr.io/green-leader/fvtt-docker/fvtt-docker:2023-08-29
+    image: ghcr.io/green-leader/fvtt-docker/fvtt-docker:latest
     container_name: fvtt
     ports: 
       - 30000:30000
