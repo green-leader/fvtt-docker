@@ -5,12 +5,10 @@ RUN deluser node && \
     mkdir -p /data/foundryvtt && \
     mkdir -p /opt/foundryvtt/resources/app && \
     adduser --disabled-password fvtt && \
-    chown fvtt:fvtt /opt/foundryvtt && \
-    chown fvtt:fvtt /data/foundryvtt && \
-    chown fvtt:fvtt /opt/foundryvtt/resources/app && \
-    chmod g+s /opt/foundryvtt && \
-    chmod g+s /data/foundryvtt && \
-    chmod g+s /opt/foundryvtt/resources/app
+    chown -R fvtt:fvtt /opt/foundryvtt && \
+    chown -R fvtt:fvtt /data/foundryvtt && \
+    chmod -R g+s /opt/foundryvtt && \
+    chmod -R g+s /data/foundryvtt && \
 USER fvtt
 
 COPY --chown=fvtt run-server.sh /opt/foundryvtt
