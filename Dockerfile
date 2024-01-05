@@ -8,7 +8,7 @@ RUN deluser node && \
     chown -R fvtt:fvtt /opt/foundryvtt && \
     chown -R fvtt:fvtt /data/foundryvtt && \
     chmod -R g+s /opt/foundryvtt && \
-    chmod -R g+s /data/foundryvtt && \
+    chmod -R g+s /data/foundryvtt
 USER fvtt
 
 COPY --chown=fvtt run-server.sh /opt/foundryvtt
