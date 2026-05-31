@@ -1,125 +1,79 @@
-name: Push to Docker Hub and GHCR
+---
+name: Test and Deploy
 
-on:
-   push:
-     branches:
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - main
       - master
-
+  pull_request:
+  release:
+    types:
+      - published
+      
 env:
-  GHCR_IMAGE: ghcr.io/green-leader/fvtt-docker
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - linux/amd64
-          - linux/arm/v6
-          - linux/arm/v7
-          - linux/arm64/v8
-          - linux/s390x
+  test:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare platform pair
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+    - uses: actions/checkout@v6
+    - name: Test build
+      run: docker build . --file Dockerfile
 
-      - uses: actions/checkout@v6
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    #ensure test passes before pushing
+    needs: test
+    if: github.event_name == 'push'
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Compute version
-        id: vars
-        run: echo "version=$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-
-      - name: Extract Docker metadata
+      - name: Docker meta
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.GHCR_IMAGE }}
+          flavor: latest=true
+          images: |
+            ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=${{ steps.vars.outputs.version }}
+            # tag event
+            type=ref,event=tag
+            # set latest tag for default branch
+            type=raw,value=latest,enable={{is_default_branch}}
+            # set date as tag using ISO8601
+            type=raw,value={{date 'YYYY-MM-DD'}}
+            # get branch or tag that triggered the run
+            type=raw,value={{github.ref_name}}
 
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v7
-        with:
-          name: digests-${{ env.PLATFORM_PAIR }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  merge:
-    runs-on: self-hosted
-    needs:
-      - build
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v8
-        with:
-          path: /tmp/digests
-          pattern: digests-*
-          merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Login to GitHub Container Registry
+      - name: Log in to ghcr.io
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute version
-        id: vars
-        run: echo "version=$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@master
         with:
-          images: |
-            ${{ env.GHCR_IMAGE }}
-            ${{ env.GHCR_IMAGE }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ steps.vars.outputs.version }},enable={{is_default_branch}}
+          platforms: ${{ env.PLATFORMS }}
 
-      - name: Create manifest list and push
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.GHCR_IMAGE }}@sha256:%s ' *)
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@master
 
-      - name: Inspect image
-        run: |
-          docker buildx imagetools inspect ${{ env.GHCR_IMAGE }}:${{ steps.vars.outputs.version }}
+      - name: Build Image
+        uses: docker/build-push-action@v7
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
